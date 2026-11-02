@@ -1,0 +1,56 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Find (or unzip) the Gradle project
+        id: find
+        run: |
+          # Agar settings.gradle.kts kahin nahi hai aur repo me zip hai, to unzip karo
+          if [ -z "$(find . -name 'settings.gradle*' -not -path './.git/*' | head -n1)" ]; then
+            ZIP=$(find . -name '*.zip' -not -path './.git/*' | head -n1)
+            if [ -n "$ZIP" ]; then
+              echo "Unzipping $ZIP"
+              unzip -o "$ZIP" -d _unzipped
+            fi
+          fi
+          SETTINGS=$(find . \( -name 'settings.gradle.kts' -o -name 'settings.gradle' \) -not -path './.git/*' | head -n1)
+          if [ -z "$SETTINGS" ]; then
+            echo "settings.gradle.kts nahi mila. Repo ka structure:"
+            find . -not -path './.git/*' | head -n 80
+            exit 1
+          fi
+          DIR=$(dirname "$SETTINGS")
+          echo "Gradle project folder: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Build debug APK
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: InfinitePages-debug-apk
+          path: ${{ steps.find.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk
